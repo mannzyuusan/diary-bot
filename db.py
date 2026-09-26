@@ -14,6 +14,12 @@ class DiaryDB:
                 created_at TEXT NOT NULL,
                 user_id    INTEGER
             );
+            CREATE TABLE IF NOT EXISTS images (
+                path       TEXT PRIMARY KEY,  -- BASE_DIR からの相対パス
+                message_id INTEGER NOT NULL,
+                user_id    INTEGER NOT NULL,
+                diary_date TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS summaries (
                 period_key TEXT PRIMARY KEY,
                 content    TEXT NOT NULL,
@@ -87,6 +93,29 @@ class DiaryDB:
             n += 1
             d -= timedelta(days=1)
         return n
+
+    # --- 画像 ---
+    def add_image(self, path: str, message_id: int, user_id: int, diary_date: date):
+        self.conn.execute(
+            "INSERT OR REPLACE INTO images VALUES (?, ?, ?, ?)",
+            (path, message_id, user_id, diary_date.isoformat()),
+        )
+        self.conn.commit()
+
+    def images_between(self, user_id: int, start: date, end: date) -> list[tuple[str, str]]:
+        """[(日付, 相対パス), ...]"""
+        return self.conn.execute(
+            "SELECT diary_date, path FROM images WHERE user_id = ? AND diary_date BETWEEN ? AND ? "
+            "ORDER BY diary_date, message_id",
+            (user_id, start.isoformat(), end.isoformat()),
+        ).fetchall()
+
+    def delete_images(self, message_id: int) -> list[str]:
+        """メッセージに付いていた画像の記録を消し、そのパスを返す。"""
+        paths = [r[0] for r in self.conn.execute("SELECT path FROM images WHERE message_id = ?", (message_id,))]
+        self.conn.execute("DELETE FROM images WHERE message_id = ?", (message_id,))
+        self.conn.commit()
+        return paths
 
     # --- まとめ ---
     def has_summary(self, key: str) -> bool:

@@ -32,6 +32,8 @@ OWNER_RE = re.compile(r"日記の持ち主: <@!?(\d+)>")
 
 BASE_DIR = Path(__file__).parent
 SUMMARY_DIR = BASE_DIR / "summaries"
+# 日記の画像を images/<ユーザーID>/<日付>/ に保存する（DiscordのURLは期限切れになるため）
+IMAGE_DIR = BASE_DIR / "images"
 
 log = logging.getLogger("diary-bot")
 
@@ -82,7 +84,7 @@ def is_diary_message(message: discord.Message) -> bool:
     return owners.get(message.channel.id) == message.author.id
 
 
-def record(message: discord.Message) -> bool:
+async def record(message: discord.Message) -> bool:
     """日記として保存する。その日の最初の投稿なら True。"""
     text = message_text(message)
     if not text:
@@ -90,7 +92,28 @@ def record(message: discord.Message) -> bool:
     d = diary_date(message.created_at)
     first = not db.has_entry(message.author.id, d)
     db.upsert(message.id, message.author.id, d, text, message.created_at)
+    await save_images(message, d)
     return first
+
+
+async def save_images(message: discord.Message, d: date):
+    for i, a in enumerate(message.attachments):
+        if not (a.content_type or "").startswith("image/"):
+            continue
+        folder = IMAGE_DIR / str(message.author.id) / d.isoformat()
+        path = folder / f"{message.id}_{i}{Path(a.filename).suffix.lower()}"
+        try:
+            if not path.exists():
+                folder.mkdir(parents=True, exist_ok=True)
+                await a.save(path)
+            db.add_image(path.relative_to(BASE_DIR).as_posix(), message.id, message.author.id, d)
+        except (discord.HTTPException, OSError):
+            log.exception("image save failed: %s", a.filename)
+
+
+def remove_images(message_id: int):
+    for rel in db.delete_images(message_id):
+        (BASE_DIR / rel).unlink(missing_ok=True)
 
 
 def split_message(text: str, limit: int = 1900) -> list[str]:
@@ -241,7 +264,7 @@ async def backfill():
         count = 0
         async for m in channel.history(after=after, limit=None, oldest_first=True):
             if is_diary_message(m) and message_text(m):
-                record(m)
+                await record(m)
                 count += 1
         log.info("backfill #%s: %d messages", channel.name, count)
 
@@ -278,7 +301,7 @@ async def on_guild_channel_update(before: discord.abc.GuildChannel, after: disco
 async def on_message(message: discord.Message):
     if message.author.bot or not is_diary_message(message):
         return
-    first = record(message)
+    first = await record(message)
     await message.add_reaction("✅")
     if first:
         streak = db.streak(message.author.id, diary_date(message.created_at))
@@ -299,6 +322,7 @@ async def on_raw_message_edit(payload: discord.RawMessageUpdateEvent):
 async def on_raw_message_delete(payload: discord.RawMessageDeleteEvent):
     if payload.channel_id in owners:
         db.delete(payload.message_id)
+        remove_images(payload.message_id)
 
 
 # --- スラッシュコマンド ---
