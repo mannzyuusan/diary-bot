@@ -6,6 +6,7 @@ Discordの日記チャンネルに投稿するだけで日記として記録し�
 
 | 機能 | 内容 |
 |---|---|
+| 複数人対応 | 各自の日記チャンネルで `/register` を実行すると、そのチャンネルがその人の日記になる（チャンネルトピックに持ち主が記録される）。管理者は `/register user:@名前` で代理登録も可 |
 | 質問形式で記入 | `/diary` またはリマインドの「✏️日記を書く」ボタンでフォームが開き、「今日あったこと」「うれしかったこと・悲しかったこと」「明日やること」に答えるだけで記録（1問目以外は空欄OK） |
 | 自由記入 | 日記チャンネルへの自分の投稿を保存（✅リアクション、その日最初の投稿で連続日数を返信）。編集・削除も反映 |
 | リマインド | 23:00 / 翌1:00 に今日の日記が未記入なら通知。GitHub Actions で動くのでPCの電源が切れていても届く |
@@ -24,7 +25,7 @@ Discordの日記チャンネルに投稿するだけで日記として記録し�
 1. https://discord.com/developers/applications → New Application
 2. **Bot** タブ → Reset Token でトークンを取得
 3. 同じタブの **Privileged Gateway Intents** で **MESSAGE CONTENT INTENT** をON
-4. **OAuth2 > URL Generator** で scope に `bot` と `applications.commands`、権限に `View Channels` / `Send Messages` / `Read Message History` / `Add Reactions` を選び、生成URLから自分のサーバーに招待
+4. **OAuth2 > URL Generator** で scope に `bot` と `applications.commands`、権限に `View Channels` / `Manage Channels` / `Send Messages` / `Read Message History` / `Add Reactions` を選び、生成URLから自分のサーバーに招待
 
 ### 2. IDを調べる
 Discordの 設定 > 詳細設定 > **開発者モード** をON → サーバー・日記チャンネル・自分のアイコンを右クリック →「IDをコピー」
@@ -52,5 +53,6 @@ Discordのチャンネル履歴から記入状況を判定するので、PCのBo
 
 リポジトリの Settings → Secrets and variables → Actions に以下を登録する：
 `DISCORD_TOKEN` / `DIARY_CHANNEL_ID` / `OWNER_ID`
+（`DIARY_CHANNEL_ID` はサーバーの特定に使う。2人目以降の登録は `/register` だけでよく、secretの追加は不要）
 
 動作テストは Actions タブ → 日記リマインド → Run workflow（`force` をONにすると記入済みでも送信）。
