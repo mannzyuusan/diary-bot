@@ -9,9 +9,9 @@ import urllib.request
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-TOKEN = os.environ["DISCORD_TOKEN"]
-CHANNEL_ID = os.environ["DIARY_CHANNEL_ID"]
-OWNER_ID = os.environ["OWNER_ID"]
+TOKEN = os.environ["DISCORD_TOKEN"].strip()
+CHANNEL_ID = os.environ["DIARY_CHANNEL_ID"].strip()
+OWNER_ID = os.environ["OWNER_ID"].strip()
 DAY_START_HOUR = int(os.getenv("DAY_START_HOUR", "4"))
 SLOT = os.getenv("SLOT", "first")  # first: 23時 / last: 1時
 FORCE = os.getenv("FORCE") == "1"  # テスト用: 記入済みでも送信する
