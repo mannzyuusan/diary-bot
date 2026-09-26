@@ -232,20 +232,35 @@ async def post_summary(user_id: int, channel_id: int, start: date, end: date, la
 # --- 定期タスク ---
 # リマインドは GitHub Actions（remind_action.py）が担当。PCが止まっていても届くようにするため。
 
+async def run_summaries():
+    """直近で終わった週（月〜日）と月のまとめを、まだ投稿していなければ投稿する。
+
+    まとめ済みかどうかはDBで管理しているので、何度呼んでも二重には投稿されない。
+    朝7時にPCがスリープ・電源オフだった場合も、次の起動・復帰時に投稿される。
+    """
+    today = now().date()
+    week_end = today - timedelta(days=today.weekday() + 1)  # 先週の日曜
+    week_start = week_end - timedelta(days=6)
+    month_end = today.replace(day=1) - timedelta(days=1)  # 先月末
+    month_start = month_end.replace(day=1)
+    periods = [
+        (week_start, week_end, "週のまとめ", f"week-{week_start.isoformat()}"),
+        (month_start, month_end, f"{month_start.month}月のまとめ", f"month-{month_start:%Y-%m}"),
+    ]
+    for channel_id, user_id in list(owners.items()):
+        for start, end, label, period in periods:
+            # 日記を始める前の期間のまとめは出さない
+            if db.count_days(user_id, date.min, end) == 0:
+                continue
+            try:
+                await post_summary(user_id, channel_id, start, end, label, period)
+            except Exception:
+                log.exception("auto summary failed: channel=%s", channel_id)
+
+
 @tasks.loop(time=SUMMARY_TIME)
 async def auto_summary():
-    today = now().date()
-    yesterday = today - timedelta(days=1)
-    for channel_id, user_id in list(owners.items()):
-        try:
-            if today.weekday() == 0:  # 月曜: 先週分
-                start = yesterday - timedelta(days=6)
-                await post_summary(user_id, channel_id, start, yesterday, "週のまとめ", f"week-{start.isoformat()}")
-            if today.day == 1:  # 1日: 先月分
-                start = yesterday.replace(day=1)
-                await post_summary(user_id, channel_id, start, yesterday, f"{start.month}月のまとめ", f"month-{start:%Y-%m}")
-        except Exception:
-            log.exception("auto summary failed: channel=%s", channel_id)
+    await run_summaries()
 
 
 @auto_summary.before_loop
@@ -277,17 +292,13 @@ async def setup_hook():
     auto_summary.start()
 
 
-_ready_once = False
-
-
 @client.event
 async def on_ready():
-    global _ready_once
+    # 起動時だけでなく、スリープ復帰などで接続し直したときにも呼ばれる
     log.info("logged in as %s", client.user)
-    if not _ready_once:
-        _ready_once = True
-        load_owners()
-        await backfill()
+    load_owners()
+    await backfill()
+    await run_summaries()
 
 
 @client.event
@@ -364,6 +375,8 @@ async def register(interaction: discord.Interaction, user: discord.Member | None
         f"✅ このチャンネルを {user.mention} の日記チャンネルにしました！\n"
         "`/diary` で質問に答えるか、ここに直接書き込めば日記になります。毎晩23時と1時に書き忘れをお知らせします。"
     )
+    # 登録前にこのチャンネルへ書いていた分も取り込む
+    await backfill()
 
 
 @tree.command(description="質問に答えて今日の日記を書く")
