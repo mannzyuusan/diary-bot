@@ -1,0 +1,31 @@
+name: 日記まとめ
+
+on:
+  schedule:
+    - cron: "0 22 * * *"  # 07:00 JST（月曜は先週分、1日は先月分を投稿）
+  workflow_dispatch:
+    inputs:
+      period:
+        description: "auto=今日が月曜/1日なら投稿 / week=先週分 / month=先月分"
+        type: choice
+        options: [auto, week, month]
+        default: auto
+
+jobs:
+  summary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: pip install "anthropic>=1.8"
+      - run: python summary_action.py
+        env:
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          DIARY_CHANNEL_ID: ${{ secrets.DIARY_CHANNEL_ID }}
+          OWNER_ID: ${{ secrets.OWNER_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DAY_START_HOUR: "4"
+          PERIOD: ${{ inputs.period || 'auto' }}

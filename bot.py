@@ -1,14 +1,13 @@
 import logging
 import os
 import re
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import anthropic
 import discord
 from discord import app_commands
-from discord.ext import tasks
 from dotenv import load_dotenv
 
 from db import DiaryDB
@@ -25,13 +24,11 @@ LEGACY_OWNER_ID = int(os.getenv("OWNER_ID") or 0)
 DAY_START_HOUR = int(os.getenv("DAY_START_HOUR", "4"))
 
 JST = ZoneInfo("Asia/Tokyo")
-SUMMARY_TIME = time(7, 0, tzinfo=JST)
 BACKFILL_DAYS = 30
 # チャンネルトピックに書く持ち主の目印。remind_action.py も同じ形式で読む
 OWNER_RE = re.compile(r"日記の持ち主: <@!?(\d+)>")
 
 BASE_DIR = Path(__file__).parent
-SUMMARY_DIR = BASE_DIR / "summaries"
 # 日記の画像を images/<ユーザーID>/<日付>/ に保存する（DiscordのURLは期限切れになるため）
 IMAGE_DIR = BASE_DIR / "images"
 
@@ -210,62 +207,15 @@ async def build_summary(user_id: int, start: date, end: date, label: str) -> str
         log.exception("Claude API error")
         return header + f"⚠️ 要約の生成に失敗しました（HTTP {e.status_code}）。"
     except Exception:
-        # 想定外のエラーで定期タスクが止まらないようにする
+        # 想定外のエラーでもコマンドには応答する
         log.exception("summary failed")
         return header + "⚠️ 要約の生成に失敗しました。"
     return header + body
 
 
-async def post_summary(user_id: int, channel_id: int, start: date, end: date, label: str, period: str):
-    key = f"{user_id}-{period}"
-    if db.has_summary(key):
-        return
-    text = await build_summary(user_id, start, end, label)
-    channel = await get_channel(channel_id)
-    for chunk in split_message(text):
-        await channel.send(chunk)
-    db.save_summary(key, text)
-    SUMMARY_DIR.mkdir(exist_ok=True)
-    (SUMMARY_DIR / f"{key}.md").write_text(text, encoding="utf-8")
-
-
 # --- 定期タスク ---
-# リマインドは GitHub Actions（remind_action.py）が担当。PCが止まっていても届くようにするため。
-
-async def run_summaries():
-    """直近で終わった週（月〜日）と月のまとめを、まだ投稿していなければ投稿する。
-
-    まとめ済みかどうかはDBで管理しているので、何度呼んでも二重には投稿されない。
-    朝7時にPCがスリープ・電源オフだった場合も、次の起動・復帰時に投稿される。
-    """
-    today = now().date()
-    week_end = today - timedelta(days=today.weekday() + 1)  # 先週の日曜
-    week_start = week_end - timedelta(days=6)
-    month_end = today.replace(day=1) - timedelta(days=1)  # 先月末
-    month_start = month_end.replace(day=1)
-    periods = [
-        (week_start, week_end, "週のまとめ", f"week-{week_start.isoformat()}"),
-        (month_start, month_end, f"{month_start.month}月のまとめ", f"month-{month_start:%Y-%m}"),
-    ]
-    for channel_id, user_id in list(owners.items()):
-        for start, end, label, period in periods:
-            # 日記を始める前の期間のまとめは出さない
-            if db.count_days(user_id, date.min, end) == 0:
-                continue
-            try:
-                await post_summary(user_id, channel_id, start, end, label, period)
-            except Exception:
-                log.exception("auto summary failed: channel=%s", channel_id)
-
-
-@tasks.loop(time=SUMMARY_TIME)
-async def auto_summary():
-    await run_summaries()
-
-
-@auto_summary.before_loop
-async def wait_ready():
-    await client.wait_until_ready()
+# リマインド（remind_action.py）と週・月のまとめ（summary_action.py）は GitHub Actions が担当。
+# PCが止まっていても決まった時刻に届くようにするため。
 
 
 # --- イベント ---
@@ -289,7 +239,6 @@ async def setup_hook():
     client.add_view(WriteButton())
     tree.copy_global_to(guild=guild)
     await tree.sync(guild=guild)
-    auto_summary.start()
 
 
 @client.event
@@ -298,7 +247,6 @@ async def on_ready():
     log.info("logged in as %s", client.user)
     load_owners()
     await backfill()
-    await run_summaries()
 
 
 @client.event

@@ -10,14 +10,13 @@ Discordの日記チャンネルに投稿するだけで日記として記録し�
 | 質問形式で記入 | `/diary` またはリマインドの「✏️日記を書く」ボタンでフォームが開き、「今日あったこと」「うれしかったこと・悲しかったこと」「明日やること」に答えるだけで記録（1問目以外は空欄OK） |
 | 自由記入 | 日記チャンネルへの自分の投稿を保存（✅リアクション、その日最初の投稿で連続日数を返信）。編集・削除も反映 |
 | リマインド | 23:00 / 翌1:00 に今日の日記が未記入なら通知。GitHub Actions で動くのでPCの電源が切れていても届く |
-| 週まとめ | 毎週月曜 7:00 に先週分をAIが要約して投稿 |
-| 月まとめ | 毎月1日 7:00 に先月分をAIが要約して投稿 |
+| 週まとめ | 毎週月曜 7:00 に先週分をAIが要約して投稿（GitHub Actions で動くのでPCオフでも届く） |
+| 月まとめ | 毎月1日 7:00 に先月分をAIが要約して投稿（同上） |
 | `/streak` | 連続日数・今月の記入日数 |
 | `/summary days:N` | 直近N日分をその場で要約 |
 
 - 朝4時より前の投稿は前日の日記扱い（`DAY_START_HOUR` で変更可）
 - Bot停止中の投稿は、次回起動時に自動で取り込み
-- 要約は `summaries/` にMarkdownでも保存
 
 ## セットアップ
 
@@ -46,13 +45,14 @@ PCログイン時に自動起動したい場合は、`Win+R` →`shell:startup` 
 ## 費用の目安
 要約は Claude Haiku 4.5 を使用。週・月の自動まとめ合わせて月20円程度（Claude Proプランとは別に、APIクレジットのチャージが必要）。
 
-## リマインド（GitHub Actions）
+## リマインドと週・月まとめ（GitHub Actions）
 
-`.github/workflows/remind.yml` が毎日 23:00 / 翌1:00 (JST) に `remind_action.py` を実行する。
+`.github/workflows/remind.yml` が毎日 23:00 / 翌1:00 (JST) に `remind_action.py` を、
+`.github/workflows/summary.yml` が毎朝 7:00 (JST) に `summary_action.py` を実行する。
 Discordのチャンネル履歴から記入状況を判定するので、PCのBotが止まっていても動く（数分〜十数分遅れることがある）。
 
 リポジトリの Settings → Secrets and variables → Actions に以下を登録する：
-`DISCORD_TOKEN` / `DIARY_CHANNEL_ID` / `OWNER_ID`
+`DISCORD_TOKEN` / `DIARY_CHANNEL_ID` / `OWNER_ID` / `ANTHROPIC_API_KEY`（まとめ用）
 （`DIARY_CHANNEL_ID` はサーバーの特定に使う。2人目以降の登録は `/register` だけでよく、secretの追加は不要）
 
 動作テストは Actions タブ → 日記リマインド → Run workflow（`force` をONにすると記入済みでも送信）。
