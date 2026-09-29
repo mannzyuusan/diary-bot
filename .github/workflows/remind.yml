@@ -30,3 +30,4 @@ jobs:
           DAY_START_HOUR: "4"
           SLOT: ${{ github.event_name == 'schedule' && (github.event.schedule == '0 14 * * *' && 'first' || 'last') || inputs.slot }}
           FORCE: ${{ inputs.force && '1' || '' }}
+          SCHEDULED: ${{ github.event_name == 'schedule' && '1' || '' }}

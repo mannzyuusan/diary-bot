@@ -1,12 +1,15 @@
 """GitHub Actions から実行する日記リマインド（標準ライブラリのみ）。"""
 import os
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import discord_rest as dr
 
 SLOT = os.getenv("SLOT", "first")  # first: 23時 / last: 1時
 FORCE = os.getenv("FORCE") == "1"  # テスト用: 記入済みでも送信する
+SCHEDULED = os.getenv("SCHEDULED") == "1"  # 定期実行かどうか（手動実行なら遅延チェックをしない）
+SLOT_HOUR = {"first": 23, "last": 1}
+MAX_DELAY = timedelta(hours=2)
 
 
 def streak(dates: set[date], today: date) -> int:
@@ -48,7 +51,22 @@ def remind(channel_id: str, owner_id: str, bot_id: str, today: date):
     print(f"#{channel_id}: {today} リマインドを送信（{SLOT}, 連続{n}日）")
 
 
+def is_too_late() -> bool:
+    """GitHub Actions の定期実行は混雑で数時間遅れることがある。
+    本来の時刻から大きく遅れた場合や、日付の区切り（朝4時）をまたいだ場合は送らない。"""
+    now = datetime.now(dr.JST)
+    intended = now.replace(hour=SLOT_HOUR[SLOT], minute=0, second=0, microsecond=0)
+    if intended > now:
+        intended -= timedelta(days=1)
+    delay = now - intended
+    print(f"本来の実行時刻 {intended:%m/%d %H:%M} から {delay} 遅れ")
+    return delay > MAX_DELAY or dr.diary_date(intended.isoformat()) != dr.today()
+
+
 def main():
+    if SCHEDULED and is_too_late():
+        print("遅れすぎたためスキップ")
+        return
     bot_id = dr.bot_id()
     today = dr.today()
     owners = dr.find_owners()
